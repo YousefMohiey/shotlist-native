@@ -55,6 +55,7 @@ jobs:
       - name: Build iOS app
         run: |
           set -e
+          npx tauri ios init
           npx tauri ios build --target aarch64 --no-sign || npx tauri ios build --target aarch64
           echo "--- where did it land? ---"
           find src-tauri/gen/apple/build src-tauri/target -maxdepth 6 -name '*.app' 2>/dev/null || true
