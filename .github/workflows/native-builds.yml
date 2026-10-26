@@ -1,8 +1,8 @@
 name: native-builds
 
 # Builds macOS (.dmg) and iOS (.ipa) on GitHub's free macOS runners.
-# No Mac, no Apple Developer account required for UNSIGNED artifacts.
-# Runs on demand: Actions tab -> native-builds -> Run workflow.
+# No Mac and no Apple Developer account are required for UNSIGNED artifacts.
+# Run on demand: Actions tab -> native-builds -> Run workflow.
 on:
   workflow_dispatch:
   push:
@@ -11,7 +11,7 @@ on:
 jobs:
   macos:
     name: macOS .dmg (unsigned)
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
 
@@ -31,10 +31,12 @@ jobs:
 
       - name: Collect artifacts
         run: |
-          ls -R src-tauri/target/universal-apple-darwin/release/bundle || true
+          set -e
           mkdir -p out
           find src-tauri/target/universal-apple-darwin/release/bundle -name '*.dmg' -exec cp {} out/ \;
-          find src-tauri/target/universal-apple-darwin/release/bundle -name '*.app' -maxdepth 3 -exec tar czf out/Shotlist.app.tgz -C "$(dirname {})" "$(basename {})" \;
+          APP=$(find src-tauri/target/universal-apple-darwin/release/bundle -maxdepth 3 -name '*.app' | head -1)
+          if [ -n "$APP" ]; then ditto -c -k --sequesterRsrc --keepParent "$APP" out/Shotlist.app.zip; fi
+          ls -lh out
 
       - uses: actions/upload-artifact@v4
         with:
@@ -43,7 +45,8 @@ jobs:
 
   ios:
     name: iOS .ipa (unsigned, sideload)
-    runs-on: macos-14
+    # Xcode 16 on macos-15 can read the project format Tauri generates (format 77).
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
 
@@ -58,32 +61,37 @@ jobs:
       - name: Install JS deps
         run: npm ci
 
-      - name: Generate Xcode project
-        run: npx tauri ios init
-
-      - name: Show generated schemes (debug aid)
+      - name: Generate Xcode project + CocoaPods
         run: |
-          ls -la src-tauri/gen/apple || true
-          xcodebuild -list -project src-tauri/gen/apple/*.xcodeproj || true
+          set -e
+          xcodebuild -version
+          npx tauri ios init
+          cd src-tauri/gen/apple
+          ls -la
+          pod install --repo-update
 
       - name: Archive without signing
         run: |
           set -e
-          PROJ=$(ls -d src-tauri/gen/apple/*.xcodeproj | head -1)
-          SCHEME=$(xcodebuild -list -project "$PROJ" -json | python3 -c "import json,sys; d=json.load(sys.stdin)['project']['schemes']; print([s for s in d if 'iOS' in s or 'ios' in s][0] if d else '')")
-          echo "project=$PROJ scheme=$SCHEME"
-          xcodebuild -project "$PROJ" -scheme "$SCHEME" -configuration Release \
+          cd src-tauri/gen/apple
+          WS=$(ls -d *.xcworkspace | head -1)
+          echo "workspace=$WS"
+          xcodebuild -list -workspace "$WS" || true
+          SCHEME=$(xcodebuild -list -workspace "$WS" -json \
+            | python3 -c "import json,sys;d=json.load(sys.stdin)['workspace']['schemes'];print(next((s for s in d if 'iOS' in s), d[0]))")
+          echo "scheme=$SCHEME"
+          xcodebuild -workspace "$WS" -scheme "$SCHEME" -configuration Release \
             -sdk iphoneos -destination 'generic/platform=iOS' \
-            -archivePath build/app.xcarchive archive \
+            -archivePath "$GITHUB_WORKSPACE/build/app.xcarchive" archive \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
-            DEVELOPMENT_TEAM="" PROVISIONING_PROFILE=""
+            DEVELOPMENT_TEAM="" PROVISIONING_PROFILE="" ONLY_ACTIVE_ARCH=NO
 
       - name: Package .ipa
         run: |
           set -e
           mkdir -p out/Payload
           cp -R build/app.xcarchive/Products/Applications/*.app out/Payload/
-          cd out && zip -qr Shotlist-unsigned.ipa Payload && ls -lh Shotlist-unsigned.ipa
+          cd out && zip -qry Shotlist-unsigned.ipa Payload && ls -lh Shotlist-unsigned.ipa
 
       - uses: actions/upload-artifact@v4
         with:
