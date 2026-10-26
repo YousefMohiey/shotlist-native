@@ -1,6 +1,6 @@
 name: native-builds
 
-# Builds macOS (.dmg) and iOS (.ipa) on GitHub's free macOS runners.
+# macOS (.dmg) and iOS (.ipa) built on GitHub's free macOS runners.
 # No Mac and no Apple Developer account are required for UNSIGNED artifacts.
 # Run on demand: Actions tab -> native-builds -> Run workflow.
 on:
@@ -14,21 +14,15 @@ jobs:
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-apple-darwin,x86_64-apple-darwin
-
-      - name: Install JS deps
-        run: npm ci
-
+      - run: npm ci
       - name: Build universal .app + .dmg
         run: npx tauri build --target universal-apple-darwin
-
       - name: Collect artifacts
         run: |
           set -e
@@ -37,7 +31,6 @@ jobs:
           APP=$(find src-tauri/target/universal-apple-darwin/release/bundle -maxdepth 3 -name '*.app' | head -1)
           if [ -n "$APP" ]; then ditto -c -k --sequesterRsrc --keepParent "$APP" out/Shotlist.app.zip; fi
           ls -lh out
-
       - uses: actions/upload-artifact@v4
         with:
           name: Shotlist-macos-unsigned
@@ -45,51 +38,35 @@ jobs:
 
   ios:
     name: iOS .ipa (unsigned, sideload)
-    # Xcode 16 on macos-15 reads the project format Tauri generates (format 77).
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-apple-ios
+      - run: npm ci
 
-      - name: Install JS deps
-        run: npm ci
-
-      - name: Generate Xcode project
+      # The Xcode "Build Rust Code" phase needs the OUTER Tauri CLI running
+      # (it reads .tauri/cli-options-server.json), so we build through the CLI
+      # rather than calling xcodebuild directly.
+      - name: Build iOS app
         run: |
           set -e
-          xcodebuild -version
-          npx tauri ios init
-          ls -la src-tauri/gen/apple
-
-      # The generated Podfile has no dependencies, so CocoaPods is skipped and the
-      # .xcodeproj is archived directly.
-      - name: Archive without signing
-        run: |
-          set -e
-          PROJ=$(ls -d src-tauri/gen/apple/*.xcodeproj | head -1)
-          echo "project=$PROJ"
-          xcodebuild -list -project "$PROJ" || true
-          SCHEME=$(xcodebuild -list -project "$PROJ" -json \
-            | python3 -c "import json,sys;d=json.load(sys.stdin)['project']['schemes'];print(next((s for s in d if 'iOS' in s), d[0]))")
-          echo "scheme=$SCHEME"
-          xcodebuild -project "$PROJ" -scheme "$SCHEME" -configuration Release \
-            -sdk iphoneos -destination 'generic/platform=iOS' \
-            -archivePath "$GITHUB_WORKSPACE/build/app.xcarchive" archive \
-            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
-            DEVELOPMENT_TEAM="" PROVISIONING_PROFILE="" ONLY_ACTIVE_ARCH=NO
+          npx tauri ios build --target aarch64 --no-sign || npx tauri ios build --target aarch64
+          echo "--- where did it land? ---"
+          find src-tauri/gen/apple/build src-tauri/target -maxdepth 6 -name '*.app' 2>/dev/null || true
 
       - name: Package .ipa
         run: |
           set -e
+          APP=$(find src-tauri/gen/apple/build src-tauri/target -maxdepth 6 -name '*.app' 2>/dev/null | head -1)
+          if [ -z "$APP" ]; then echo "no .app found — see the listing above"; exit 1; fi
+          echo "app=$APP"
           mkdir -p out/Payload
-          cp -R build/app.xcarchive/Products/Applications/*.app out/Payload/
+          cp -R "$APP" out/Payload/
           cd out && zip -qry Shotlist-unsigned.ipa Payload && ls -lh Shotlist-unsigned.ipa
 
       - uses: actions/upload-artifact@v4
