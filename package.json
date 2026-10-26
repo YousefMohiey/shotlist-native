@@ -11,7 +11,9 @@
     "android:build": "tauri android build --apk --target aarch64",
     "ios:init": "tauri ios init",
     "icons": "tauri icon ../client/public/icons/icon-512.png",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "publish:update": "node ../scripts/publish-update.mjs",
+    "build:update": "tauri build --config tauri.updater.conf.json --bundles nsis"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.9.0"

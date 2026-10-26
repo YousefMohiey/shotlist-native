@@ -65,3 +65,40 @@ Sideload the APK, or publish to Play (one-off $25).
   stored locally except the WebView cache.
 - Apple may reject a pure webview app under App Store guideline 4.2; TestFlight/sideload avoids review.
 - No secrets live in this repo. The server's `.env` (Gemini key) stays on the server.
+
+## Updates
+
+Two different things, on purpose:
+
+| What | How it updates |
+|---|---|
+| Shots, projects, AI features, UI | **Automatically.** The shell just loads `SHOTLIST_URL`; deploy the server and every device sees it on next load. No app update. |
+| The shell itself (window, icons, native code) | **Built-in updater.** Checks `https://shotlist.duckdns.org/updates/latest.json` on launch, offers a native "Update now / Later" dialog, downloads, verifies the signature, installs and restarts. |
+
+Mobile has no self-update by design — Android/iOS apps update through the store or by re-sideloading.
+
+### Publishing a shell update
+
+```bash
+# 1. bump the version in BOTH places
+#    src-tauri/tauri.conf.json  →  "version": "1.0.1"
+#    src-tauri/Cargo.toml       →  version = "1.0.1"
+
+# 2. build signed updater artifacts (Windows)
+export TAURI_SIGNING_PRIVATE_KEY="C:/Users/Administrator/.tauri/shotlist-updater.key"
+export TAURI_SIGNING_PRIVATE_KEY_PASSWORD="$(cat C:/Users/Administrator/.tauri/shotlist-updater.password)"
+npx tauri build --config tauri.updater.conf.json --bundles nsis
+
+# 3. write latest.json next to the artifacts
+npm run publish:update -- --version 1.0.1 --notes "Faster launch" \
+  --from src-tauri/target/release/bundle/nsis --to ../data/updates
+
+# 4. ship it
+scp ../data/updates/* hermes-deploy@34.55.229.227:~/shotlist/data/updates/
+```
+
+Every installed shell then offers the update on its next launch.
+
+**The signing key is the whole trust chain.** `~/.tauri/shotlist-updater.key` is private and must never be
+committed; the matching public key is in `tauri.conf.json` → `plugins.updater.pubkey`. Lose the private key
+and already-installed apps will refuse every future update (they'd need a manual reinstall).

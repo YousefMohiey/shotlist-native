@@ -1,6 +1,6 @@
 [package]
 name = "shotlist-shell"
-version = "1.0.0"
+version = "1.0.1"
 description = "Native shell for the Shotlist server"
 authors = ["Shotlist"]
 edition = "2021"
@@ -15,6 +15,10 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+tauri-plugin-process = "2"
+tauri-plugin-updater = "2"
+serde_json = "1"
 
 [profile.release]
 codegen-units = 1
