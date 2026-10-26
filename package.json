@@ -1,0 +1,18 @@
+{
+  "name": "shotlist-shell",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Native shell for the Shotlist server (Windows / macOS / iOS / Android via Tauri v2)",
+  "scripts": {
+    "dev": "tauri dev",
+    "build": "tauri build",
+    "build:win": "tauri build --target x86_64-pc-windows-msvc",
+    "android:init": "tauri android init",
+    "android:build": "tauri android build --apk --target aarch64",
+    "ios:init": "tauri ios init",
+    "icons": "tauri icon ../client/public/icons/icon-512.png"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.9.0"
+  }
+}

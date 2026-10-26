@@ -1,0 +1,91 @@
+name: native-builds
+
+# Builds macOS (.dmg) and iOS (.ipa) on GitHub's free macOS runners.
+# No Mac, no Apple Developer account required for UNSIGNED artifacts.
+# Runs on demand: Actions tab -> native-builds -> Run workflow.
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+jobs:
+  macos:
+    name: macOS .dmg (unsigned)
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - name: Install JS deps
+        run: npm ci
+
+      - name: Build universal .app + .dmg
+        run: npx tauri build --target universal-apple-darwin
+
+      - name: Collect artifacts
+        run: |
+          ls -R src-tauri/target/universal-apple-darwin/release/bundle || true
+          mkdir -p out
+          find src-tauri/target/universal-apple-darwin/release/bundle -name '*.dmg' -exec cp {} out/ \;
+          find src-tauri/target/universal-apple-darwin/release/bundle -name '*.app' -maxdepth 3 -exec tar czf out/Shotlist.app.tgz -C "$(dirname {})" "$(basename {})" \;
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Shotlist-macos-unsigned
+          path: out/*
+
+  ios:
+    name: iOS .ipa (unsigned, sideload)
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios
+
+      - name: Install JS deps
+        run: npm ci
+
+      - name: Generate Xcode project
+        run: npx tauri ios init
+
+      - name: Show generated schemes (debug aid)
+        run: |
+          ls -la src-tauri/gen/apple || true
+          xcodebuild -list -project src-tauri/gen/apple/*.xcodeproj || true
+
+      - name: Archive without signing
+        run: |
+          set -e
+          PROJ=$(ls -d src-tauri/gen/apple/*.xcodeproj | head -1)
+          SCHEME=$(xcodebuild -list -project "$PROJ" -json | python3 -c "import json,sys; d=json.load(sys.stdin)['project']['schemes']; print([s for s in d if 'iOS' in s or 'ios' in s][0] if d else '')")
+          echo "project=$PROJ scheme=$SCHEME"
+          xcodebuild -project "$PROJ" -scheme "$SCHEME" -configuration Release \
+            -sdk iphoneos -destination 'generic/platform=iOS' \
+            -archivePath build/app.xcarchive archive \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            DEVELOPMENT_TEAM="" PROVISIONING_PROFILE=""
+
+      - name: Package .ipa
+        run: |
+          set -e
+          mkdir -p out/Payload
+          cp -R build/app.xcarchive/Products/Applications/*.app out/Payload/
+          cd out && zip -qr Shotlist-unsigned.ipa Payload && ls -lh Shotlist-unsigned.ipa
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Shotlist-ios-unsigned
+          path: out/Shotlist-unsigned.ipa
