@@ -10,7 +10,8 @@
     "android:init": "tauri android init",
     "android:build": "tauri android build --apk --target aarch64",
     "ios:init": "tauri ios init",
-    "icons": "tauri icon ../client/public/icons/icon-512.png"
+    "icons": "tauri icon ../client/public/icons/icon-512.png",
+    "tauri": "tauri"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.9.0"
