@@ -45,7 +45,7 @@ jobs:
 
   ios:
     name: iOS .ipa (unsigned, sideload)
-    # Xcode 16 on macos-15 can read the project format Tauri generates (format 77).
+    # Xcode 16 on macos-15 reads the project format Tauri generates (format 77).
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
@@ -61,26 +61,25 @@ jobs:
       - name: Install JS deps
         run: npm ci
 
-      - name: Generate Xcode project + CocoaPods
+      - name: Generate Xcode project
         run: |
           set -e
           xcodebuild -version
           npx tauri ios init
-          cd src-tauri/gen/apple
-          ls -la
-          pod install --repo-update
+          ls -la src-tauri/gen/apple
 
+      # The generated Podfile has no dependencies, so CocoaPods is skipped and the
+      # .xcodeproj is archived directly.
       - name: Archive without signing
         run: |
           set -e
-          cd src-tauri/gen/apple
-          WS=$(ls -d *.xcworkspace | head -1)
-          echo "workspace=$WS"
-          xcodebuild -list -workspace "$WS" || true
-          SCHEME=$(xcodebuild -list -workspace "$WS" -json \
-            | python3 -c "import json,sys;d=json.load(sys.stdin)['workspace']['schemes'];print(next((s for s in d if 'iOS' in s), d[0]))")
+          PROJ=$(ls -d src-tauri/gen/apple/*.xcodeproj | head -1)
+          echo "project=$PROJ"
+          xcodebuild -list -project "$PROJ" || true
+          SCHEME=$(xcodebuild -list -project "$PROJ" -json \
+            | python3 -c "import json,sys;d=json.load(sys.stdin)['project']['schemes'];print(next((s for s in d if 'iOS' in s), d[0]))")
           echo "scheme=$SCHEME"
-          xcodebuild -workspace "$WS" -scheme "$SCHEME" -configuration Release \
+          xcodebuild -project "$PROJ" -scheme "$SCHEME" -configuration Release \
             -sdk iphoneos -destination 'generic/platform=iOS' \
             -archivePath "$GITHUB_WORKSPACE/build/app.xcarchive" archive \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
