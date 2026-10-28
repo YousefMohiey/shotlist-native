@@ -42,7 +42,7 @@
     },
     "shortDescription": "Storyboards and shot lists",
     "longDescription": "Shotlist: script to shot list to hand-drawn storyboard frames, synced through your own server.",
-    "createUpdaterArtifacts": false
+    "createUpdaterArtifacts": true
   },
   "plugins": {
     "updater": {

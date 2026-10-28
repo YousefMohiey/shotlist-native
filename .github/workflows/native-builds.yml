@@ -21,7 +21,10 @@ jobs:
         with:
           targets: aarch64-apple-darwin,x86_64-apple-darwin
       - run: npm ci
-      - name: Build universal .app + .dmg
+      - name: Build universal .app + .dmg (signed for the updater)
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: npx tauri build --target universal-apple-darwin
       - name: Collect artifacts
         run: |
@@ -30,6 +33,9 @@ jobs:
           find src-tauri/target/universal-apple-darwin/release/bundle -name '*.dmg' -exec cp {} out/ \;
           APP=$(find src-tauri/target/universal-apple-darwin/release/bundle -maxdepth 3 -name '*.app' | head -1)
           if [ -n "$APP" ]; then ditto -c -k --sequesterRsrc --keepParent "$APP" out/Shotlist.app.zip; fi
+          # updater payload + signature
+          find src-tauri/target/universal-apple-darwin/release/bundle -name "*.app.tar.gz" -exec cp {} out/ ;
+          find src-tauri/target/universal-apple-darwin/release/bundle -name "*.app.tar.gz.sig" -exec cp {} out/ ;
           ls -lh out
       - uses: actions/upload-artifact@v4
         with:
